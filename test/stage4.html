@@ -1,0 +1,61 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Stage 4 notification stack checks</title><style>body{margin:0;font:16px system-ui}sidekick-display{display:block;width:788px}pre{white-space:pre-wrap}</style><sidekick-display></sidekick-display><pre id="results">Running</pre><script type="module">
+import {normalizeConfig} from '../dist/sidekick-display.js';
+const card=document.querySelector('sidekick-display'),results=document.querySelector('#results');
+let mounts=0,releases=0,fail=false,delay;
+class Child extends HTMLElement {connectedCallback(){mounts++;this.textContent='Controlled embedded card';this.style.height='100px';}disconnectedCallback(){releases++;}set hass(value){this.latest=value;}get updateComplete(){return fail==='async'?Promise.reject(Error('Controlled render failure')):Promise.resolve();}}
+customElements.define('stage4-child',Child);
+window.loadCardHelpers=async()=>{if(delay)await delay;return {createCardElement:()=>{if(fail===true)throw Error('Controlled creation failure');return document.createElement('stage4-child');}};};
+const listeners=new Map();let eventCallback,resolveSnapshot,subscriptionCount=0,unsubscribeCount=0;
+const connection={connected:true,addEventListener(type,cb){listeners.set(type,cb);},removeEventListener(type,cb){if(listeners.get(type)===cb)listeners.delete(type);},subscribeMessage:async(cb,message,options)=>{if(options.resubscribe!==false)throw Error('Unexpected auto replay');subscriptionCount++;eventCallback=cb;return()=>{unsubscribeCount++;};},sendMessagePromise:()=>new Promise(resolve=>resolveSnapshot=resolve)};
+const hass={connected:true,connection,locale:{language:'en'},config:{time_zone:'America/Chicago'},states:{'sun.sun':{state:'above_horizon'}},themes:{darkMode:false}};
+const ordinary={id:'controls',name:'Controls',icon:'mdi:lightbulb',card:{type:'markdown',content:'Ordinary'}};
+const page={id:'notice',name:'Notice',seconds:5,card:{type:'markdown',content:'Notice'}};
+const second={...page,id:'second',seconds:6};
+const base={sidebar:{enabled:true,buttons:[ordinary]},idle_return:{seconds:.15},automation:{display_id:'office',helper:'input_text.test',pages:[page,second]}};
+const pause=ms=>new Promise(r=>setTimeout(r,ms));
+let count=0;const check=(name,value)=>{if(!value)throw Error(name);results.textContent+='PASS '+name+'\n';count++;};
+const emit=(token,id='notice',helper='input_text.test')=>eventCallback({data:{entity_id:helper,new_state:{state:JSON.stringify({page:id,request:token})}}});
+const baseline=async(token='snapshot')=>{await pause(20);resolveSnapshot([{entity_id:card._config.automation.helper,state:JSON.stringify({page:'notice',request:token})}]);await pause(20);};
+const set=async(config=base)=>{card.setConfig(config);card.hass=hass;await pause(20);};
+const close=async()=>{card._dismissTemporary();await pause(300);};
+const top=()=>card._temporary.pages[0];
+// Begin after pageshow, which intentionally restores Home on browser return.
+if(document.readyState!=='complete')await new Promise(r=>window.addEventListener('load',r,{once:true}));await pause(30);
+try{
+results.textContent='';history.replaceState(null,'','?clock_display=office');await set();
+check('Repeat suppression is on by default',card._config.automation.ignore_repeated_alerts);
+for(const c of [{card_style:{corner_radius:-1}},{card_style:{background:'invalid-color'}},{automation:{ignore_repeated_alerts:'yes'}}]){let rejected=false;try{normalizeConfig(c);}catch{rejected=true;}check('Invalid shared/repeat setting rejected',rejected);}
+emit('before-snapshot');await baseline();check('Load-window and stored requests never show',!card._temporary);emit('before-snapshot');emit('snapshot');check('Baseline tokens stay ignored',!card._temporary);
+card._navigate('controls');await pause(30);const underlying=card._child,main=card.shadowRoot.querySelector('main'),mainMarkup=main.firstElementChild;
+emit('fresh');await pause(40);const first=top(),deadline=card._temporary.deadline;
+check('First request mounts modal card and keeps underlying child',!!first.child&&card._child===underlying&&main.firstElementChild===mainMarkup);
+check('Newest card is top-aligned below countdown',Math.abs(card._temporary.stack.getBoundingClientRect().top-card.shadowRoot.querySelector('.shell').getBoundingClientRect().top-12)<1);
+check('Underlying page and navigation are inert',main.inert&&card.shadowRoot.querySelector('nav').inert);
+const track=card.shadowRoot.querySelector('.idle-track');check('Timer spans full shell at 1px',track.getBoundingClientRect().height===1&&track.clientWidth===card.shadowRoot.querySelector('.shell').clientWidth);
+emit('fresh');emit('repeat');await pause(30);check('Duplicate token and fresh repeat do not remount or extend',top()===first&&card._temporary.deadline===deadline);
+emit('different','second');await pause(40);check('New ID inserts above old without remounting it',card._temporary.pages.length===2&&top().page.id==='second'&&card._temporary.pages[1]===first&&first.child.isConnected);
+check('New alert selects its configured shared duration',card._temporary.seconds===6&&card._temporary.deadline>deadline);
+const deadline2=card._temporary.deadline;emit('old-again');check('Older visible ID stays put and does not reset timer',card._temporary.pages[1]===first&&card._temporary.deadline===deadline2);
+await pause(200);check('Underlying idle timer stays suspended',card._page==='controls'&&card._child===underlying);
+card._resetTemporaryTimer();check('Inside activity timer reset retains last accepted duration',card._temporary.seconds===6&&card._temporary.deadline>deadline2);
+await close();check('Closing reveals same mounted page and releases only notification children',!card._temporary&&card._child===underlying&&!main.inert&&!card.shadowRoot.querySelector('nav').inert&&!first.child.isConnected);
+await pause(180);check('Full underlying idle timer restarts after close',card._page==='home');
+emit('eligible-after-close');await pause(30);check('Same ID is eligible immediately after close',top().page.id==='notice');
+const old=card._temporary;card._dismissTemporary();emit('during-exit');await pause(310);check('Arrival during exit opens a fresh modal and survives stale close callback',card._temporary&&card._temporary!==old&&!card._temporary.closing);await close();
+await set({...base,automation:{...base.automation,ignore_repeated_alerts:false}});await baseline();emit('off-first');await pause(30);const offEntry=top(),offDeadline=card._temporary.deadline;emit('off-repeat');check('Suppression off extends without duplicating or moving',top()===offEntry&&card._temporary.pages.length===1&&card._temporary.deadline>offDeadline);await close();
+await set({...base,sidebar:{enabled:false}});await baseline();emit('sidebar-off');await pause(30);check('Sidebar-off modal still opens',!card.shadowRoot.querySelector('nav')&&!!card._temporary);await pause(5350);check('Real five-second timeout closes the entire stack',!card._temporary&&card._page==='home');
+fail=true;emit('error');await pause(30);check('Creation failure stays in bounded notification error',!!card.shadowRoot.querySelector('.notification-card .error')&&!!card._temporary);await close();fail='async';emit('async-error');await pause(30);check('Rejected child render releases failed card',!!card.shadowRoot.querySelector('.error')&&!top().child);await close();fail=false;
+let releaseDelay;delay=new Promise(r=>releaseDelay=r);emit('slow');await close();releaseDelay();delay=undefined;await pause(30);check('Closing during helper load prevents hidden mounts',!card._temporary&&!card.shadowRoot.querySelector('stage4-child'));
+const stale=eventCallback;connection.connected=false;listeners.get('disconnected')();stale({data:{entity_id:'input_text.test',new_state:{state:JSON.stringify({page:'notice',request:'stale-event'})}}});check('Socket loss gates callbacks before hass update',!card._temporary&&!card._requestGate.ready);
+connection.connected=true;listeners.get('ready')();await pause(20);emit('during-reconnect');await baseline('offline');emit('offline');emit('during-reconnect');check('Reconnect baseline never replays',!card._temporary);emit('after-reconnect');await pause(30);check('Fresh post-reconnect notification received',!!card._temporary);
+const reconnectDeadline=card._temporary.deadline;card.hass={...hass,connected:false};check('Disconnect releases notification children without extending timeout',!top().child&&card._temporary.deadline===reconnectDeadline);card.hass=hass;await baseline('after-offline');await pause(30);check('Reconnect remounts visible notification with original timer',!!top().child&&card._temporary.deadline===reconnectDeadline);await close();
+history.replaceState(null,'','?clock_display=other');await set();check('Mismatched URL disables reception',!card._receptionConnection);history.replaceState(null,'',location.pathname);await set();check('Ordinary URL disables reception',!card._receptionConnection);
+history.replaceState(null,'','?clock_display=office');await set();await baseline();emit('wrong','notice','input_text.other');check('Wrong helper cannot interrupt',!card._temporary);
+await set({...base,appearance:{mode:'dark'},day_night:{mode:'night',dimming:50},card_style:{corner_radius:18,background:'#123456'}});await baseline();card._navigate('controls');await pause(30);emit('theme');await pause(30);check('Navigation and notification share radius and fill',card._child.style.getPropertyValue('--ha-card-border-radius')==='18px'&&top().child.style.getPropertyValue('--ha-card-background')==='#123456');check('Notification uses shared HA theme and dim layer above modal',top().child.latest.themes.darkMode&&card.shadowRoot.querySelector('.dim').style.opacity==='0.5'&&+getComputedStyle(card.shadowRoot.querySelector('.dim')).zIndex>+getComputedStyle(card._temporary.overlay).zIndex);
+await set({...base,automation:{...base.automation,pages:[{...page,card:{type:'picture-entity',camera_view:'live',entity:'camera.test'}}]}});await baseline();emit('camera');await pause(30);check('Camera has rounded backing but transparent square child',top().element.classList.contains('camera')&&top().child.style.getPropertyValue('--ha-card-background')==='transparent'&&top().child.style.getPropertyValue('--ha-card-border-radius')==='0px');
+await set({...base,automation:{...base.automation,pages:Array.from({length:13},(_,i)=>({...page,id:'page'+i}))}});await baseline();for(let i=0;i<12;i++)emit('overflow-'+i,'page'+i);await pause(50);check('Cards extend beyond bottom edge and modal page scrolls',card._temporary.overlay.scrollHeight>card._temporary.overlay.clientHeight&&card._temporary.stack.getBoundingClientRect().bottom>card.shadowRoot.querySelector('.shell').getBoundingClientRect().bottom);card._temporary.overlay.scrollTop=100;const scroll=card._temporary.overlay.scrollTop;emit('repeat-scrolled','page0');check('Visible repeat leaves scroll position unchanged',card._temporary.overlay.scrollTop===scroll);emit('new-scrolled','page12');await pause(40);check('New distinct notification returns modal page to top',card._temporary.overlay.scrollTop===0);await close();
+const editor=document.createElement('sidekick-display-editor');document.body.append(editor);editor.setConfig({...base,custom_option:'preserved'});editor.hass=hass;const repeat=editor.shadowRoot.querySelector('input[type=checkbox]');let changed;editor.addEventListener('config-changed',e=>changed=e.detail.config);repeat.click();check('Global repeat toggle defaults on and preserves unrelated config',changed.automation.ignore_repeated_alerts===false&&changed.custom_option==='preserved');editor.remove();
+emit('unmount','page0');await pause(30);card.remove();check('Unmount releases cards, timers and subscriptions',!card._temporary&&!card._receptionConnection&&unsubscribeCount>0&&listeners.size===0);document.body.prepend(card);await pause(30);await baseline();check('Remount starts Home with a fresh baseline',card._page==='home'&&!card._temporary);
+results.textContent+='COMPLETE '+count+' checks; '+subscriptionCount+' subscriptions, '+unsubscribeCount+' releases';
+}catch(error){results.textContent+='FAIL '+error.stack;}
+</script></html>

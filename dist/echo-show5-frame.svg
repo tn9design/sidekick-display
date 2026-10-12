@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 470" role="img" aria-label="Stylized front-facing Echo Show 5 frame">
+  <defs>
+    <linearGradient id="bezel" x2="0" y2="1">
+      <stop stop-color="#30363a"/>
+      <stop offset="1" stop-color="#171b1e"/>
+    </linearGradient>
+    <linearGradient id="base" x2="0" y2="1">
+      <stop stop-color="#34383b"/>
+      <stop offset="1" stop-color="#202427"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="430" cy="458" rx="391" ry="9" fill="#000" opacity=".12"/>
+  <path d="M36 431H824L810 449H50Z" fill="url(#base)"/>
+  <!-- The inner path is a transparent, square-cornered screen opening. -->
+  <path fill="url(#bezel)" fill-rule="evenodd" d="M28 10H832Q850 10 850 28V427Q850 444 832 444H28Q10 444 10 427V28Q10 10 28 10ZM36 32V426H824V32Z"/>
+  <path d="M28 11H832Q849 11 849 28V427Q849 443 832 443H28Q11 443 11 427V28Q11 11 28 11Z" fill="none" stroke="#566067" stroke-opacity=".55" stroke-width="2"/>
+  <rect x="35" y="31" width="790" height="396" fill="none" stroke="#070a0c" stroke-width="2"/>
+  <circle cx="819" cy="21" r="4" fill="#0b1014"/>
+  <circle cx="819" cy="21" r="1.7" fill="#29434b"/>
+</svg>

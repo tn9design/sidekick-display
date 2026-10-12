@@ -1,0 +1,76 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Stage 3 controlled checks</title><style>body{margin:0}sidekick-display{display:block;width:788px}pre{position:fixed;bottom:0;background:white;max-height:140px;overflow:auto}</style><button id="manual">Start activity check</button><sidekick-display></sidekick-display><pre id="results">Running</pre><script type="module">
+import {normalizeConfig} from '../dist/sidekick-display.js';
+const card=document.querySelector('sidekick-display'), results=document.querySelector('#results');
+let mounts=0,unmounts=0;
+class Child extends HTMLElement {connectedCallback(){mounts++;this.textContent='Controlled child';}disconnectedCallback(){unmounts++;}set hass(value){this.latest=value;}}
+customElements.define('stage3-child',Child);
+window.loadCardHelpers=async()=>({createCardElement:()=>document.createElement('stage3-child')});
+const hass={connected:true,locale:{language:'en'},config:{time_zone:'America/Chicago'},states:{'sun.sun':{state:'above_horizon'}},themes:{darkMode:false}};
+const button={id:'controls',name:'Controls',icon:'mdi:lightbulb',card:{type:'vertical-stack',cards:[{type:'entities',entities:['sun.sun']}]}};
+const base={sidebar:{enabled:true,buttons:[button]}};
+const pause=ms=>new Promise(r=>setTimeout(r,ms));
+const check=(name,value)=>{if(!value)throw Error(name);results.textContent+='PASS '+name+'\n';};
+const invalid=c=>{try{normalizeConfig(c);return false;}catch{return true;}};
+const set=async(config=base)=>{card.setConfig(config);card.hass=hass;await pause(30);};
+// Run after initial pageshow so the card's startup Home restoration cannot race the checks.
+const run = async () => {
+try {
+results.textContent='';
+for(const url of ['javascript:alert(1)','data:text/html,test','https://user:pass@example.org'])check('Reject unsafe URL '+url.split(':')[0],invalid({sidebar:{buttons:[{...button,destination:'url',url,card:undefined}]}}));
+check('Reject non-local HA path',invalid({sidebar:{buttons:[{...button,destination:'ha-view',url:'//example.org'}]}}));
+check('Reject malformed nested stack',invalid({sidebar:{buttons:[{...button,card:{type:'vertical-stack',cards:[{}]}}]}}));
+check('Reject empty grid',invalid({sidebar:{buttons:[{...button,card:{type:'grid',cards:[]}}]}}));
+check('Reject escaped HA origin',invalid({sidebar:{buttons:[{...button,destination:'ha-view',url:'/\\\\example.org'}]}}));
+check('Reject duplicate IDs',invalid({sidebar:{buttons:[button,button]}}));
+check('Reject invalid timeout',invalid({...base,idle_return:{seconds:-1}}));
+check('Reject invalid scale',invalid({sidebar:{scale:126}}));
+await set();card._navigate('controls');await pause(30);check('Internal child mounted',!!card._child&&mounts===1);const original=card._child;card.hass={...hass};check('Live updates retain child',card._child===original);
+card.hass={...hass,connected:false};check('Disconnected child released',!card._child&&unmounts===1&&!card.shadowRoot.querySelector('.connection').hidden);card.hass=hass;await pause(30);check('Reconnect mounts fresh child',!!card._child&&card._child!==original);card._navigate('home');check('Home cleans child',!card._child);
+card.hass={...hass,connected:false};const before=card.shadowRoot.querySelector('.digits').textContent;card._clock();check('Offline home clock remains visible',!!before&&!!card.shadowRoot.querySelector('.digits').textContent);card._navigate('controls');await pause(30);check('Offline navigation has no controls',!card._child);card._navigate('home');card.hass=hass;
+await set({...base,idle_return:{seconds:.12}});card._navigate('controls');const progress=card.shadowRoot.querySelector('.idle-progress'),track=card.shadowRoot.querySelector('.idle-track');check('Active idle progress uses accent and is 1px',!track.hidden&&getComputedStyle(progress).height==='1px'&&getComputedStyle(progress).backgroundColor==='rgb(183, 213, 211)');check('Progress spans the shell',progress.getBoundingClientRect().width===card.shadowRoot.querySelector('.shell').getBoundingClientRect().width);await pause(70);check('Progress decreases while timer runs',card._idleAnimation.currentTime>0&&card._idleAnimation.currentTime<120);card._resetIdle();check('Activity restarts progress',card._idleAnimation.currentTime<20);await pause(70);check('Activity resets idle',card._page==='controls');await pause(90);check('Idle restores Home',card._page==='home'&&!card._child);check('Home hides progress',track.hidden);
+await set(base);card._navigate('controls');await pause(180);check('Idle off by default',card._page==='controls');check('Idle off hides progress',card.shadowRoot.querySelector('.idle-track').hidden);
+await set({sidebar:{enabled:true,buttons:[{...button,id:'other'},button]}});check('Config change returns Home',card._page==='home'&&!card._child);check('Configured ordering retained',card.shadowRoot.querySelectorAll('nav button')[1].dataset.page==='other');
+await set({sidebar:{enabled:true,buttons:[]}});check('Zero buttons hides sidebar',!card.shadowRoot.querySelector('nav'));card._navigate('home');
+for(const scale of [75,125]) {await set({sidebar:{enabled:true,scale,buttons:Array.from({length:4},(_,i)=>({...button,id:'page'+i}))}});card._navigate('page3');await pause(30);const nav=card.shadowRoot.querySelector('nav'),buttons=[...nav.querySelectorAll('button')];check('Scale '+scale+' keeps minimum touch target',buttons.every(b=>b.getBoundingClientRect().height>=48));check('Scale '+scale+' marker aligns',nav.querySelector('.selection').style.transform===`translateY(${4*(card._buttonSize+8)}px)`);check('Scale '+scale+' fits available height',nav.scrollHeight<=nav.clientHeight+1);}
+await set({sidebar:{enabled:true,buttons:[{...button,destination:'ha-view',url:'/lovelace/test',card:undefined},{...button,id:'external',destination:'url',url:'https://example.org',card:undefined}]}});const calls=[];card._leave=(url,destination)=>calls.push({url,destination});card._navigate('controls');card._navigate('external');check('Destination routing',calls[0].destination==='ha-view'&&calls[1].destination==='url'&&card._page==='home');
+await set(base);card._navigate('controls');card._navigate('home');await pause(30);check('Rapid navigation cancels pending mount',!card._child);
+card._navigate('controls');await pause(30);card.remove();check('Disconnect cleans child',!card._child);document.body.prepend(card);await pause(30);check('Reattach starts Home',card._page==='home');
+const actualLeave=Object.getPrototypeOf(card)._leave;
+card._leave=actualLeave;
+await set(base);card._navigate('controls');await pause(30);
+const beforeURL=location.href;
+card._leave('/test/stage3.html?navigation-check','ha-view');
+check('Leaving for HA view releases active child',!card._child&&card._page==='home');
+check('HA view uses browser history',location.search==='?navigation-check');
+history.replaceState(null,'',beforeURL);
+await set({...base,idle_return:{seconds:.2}});card._navigate('controls');await pause(100);
+card._child.style.height='2000px';card.shadowRoot.querySelector('.page').scrollTop=100;await pause(140);
+check('Programmatic scrolling does not postpone idle',card._page==='home');
+await set(base);const touchHeight=card.shadowRoot.querySelector('nav button').getBoundingClientRect().height;
+card._navigate('controls');await pause(30);const squish=card._selectionAnimation;
+check('Arrival scales around visual center',card.shadowRoot.querySelector('.selection').style.transformOrigin==='center center');
+const pullY=parseFloat(squish.effect.getKeyframes()[1].transform.match(/translateY\(([-\d.]+)px\)/)[1]);check('Downward trailing top edge stays put',Math.abs(pullY-card._buttonSize*.35/2)<.01);
+const arrivalFrames=squish.effect.getKeyframes(),destination=card._buttonSize+8;
+check('Arrival bounces vertically across final position',parseFloat(arrivalFrames[4].transform.match(/translateY\(([-\d.]+)px\)/)[1])>destination&&parseFloat(arrivalFrames[5].transform.match(/translateY\(([-\d.]+)px\)/)[1])<destination);
+check('Bounce has no sideways shift or rotation',arrivalFrames.every(k=>!k.transform.includes('translateX')&&!k.transform.includes('rotate')));
+check('Squish leaves touch target steady',card.shadowRoot.querySelector('nav button').getBoundingClientRect().height===touchHeight);
+card._navigate('home');const upFrames=card._selectionAnimation.effect.getKeyframes();const upStart=parseFloat(upFrames[0].transform.match(/translateY\(([-\d.]+)px\)/)[1]),upPull=parseFloat(upFrames[1].transform.match(/translateY\(([-\d.]+)px\)/)[1]);check('Upward trailing bottom edge stays put',Math.abs(upPull-upStart+card._buttonSize*.35/2)<.01);check('New navigation cancels prior squish',squish.playState==='idle');await pause(560);
+check('Selection settles to normal size',getComputedStyle(card.shadowRoot.querySelector('.selection')).transform==='matrix(1, 0, 0, 1, 0, 0)');
+const originalMatchMedia=window.matchMedia;window.matchMedia=q=>q==='(prefers-reduced-motion: reduce)'?{matches:true}:originalMatchMedia.call(window,q);
+card._navigate('controls');check('Reduced motion skips squish',card._selectionAnimation.playState==='idle');window.matchMedia=originalMatchMedia;card._navigate('home');
+results.textContent+='ALL STAGE 3 CONTROLLED CHECKS PASSED';
+document.querySelector('#manual').onclick=async()=>{
+  await set({...base,idle_return:{seconds:6}});
+  card._navigate('controls');
+  let activity=0;
+  const reset=card._resetIdle;
+  card._resetIdle=function(){activity++;return reset.call(this);};
+  results.textContent='MANUAL ACTIVITY READY';
+  setTimeout(()=>{results.textContent+='\nTrusted activity resets: '+activity+'; page: '+card._page;},4500);
+  setTimeout(()=>{results.textContent+='\nFinal idle page: '+card._page;card._resetIdle=reset;},10000);
+};
+} catch(error) {results.textContent+='FAIL '+error.message;}
+};
+if (document.readyState === 'complete') run();
+else window.addEventListener('pageshow',run,{once:true});
+</script></html>

@@ -1,0 +1,11 @@
+{
+  "name": "sidekick-display",
+  "version": "0.5.0-beta.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node --check src/sidekick-display.js && node --check src/card-picker.js && node --check src/card-reorder.js",
+    "test": "node --test"
+  }
+}

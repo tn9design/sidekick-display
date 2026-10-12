@@ -9,9 +9,9 @@ const BACKGROUND = new URL('./stockpotomage.png', import.meta.url).href;
 const BACKGROUND_IMAGES = [
   ['', 'Stockpot Inspo (Default)'],
   ['./background.svg','Abstract Waves'],
-  ...['blue-topology','faceted-balance','floating-ink','lagoon-simplified','nebula-geometry','precision-lattice','prismatic-wash'].map(name=>[`./backgrounds/${name}.png`,name.split('-').map(word=>word[0].toUpperCase()+word.slice(1)).join(' ')]),
+  ...['blue-topology','faceted-balance','floating-ink','lagoon-simplified','nebula-geometry','precision-lattice','prismatic-wash'].map(name=>[`./${name}.png`,name.split('-').map(word=>word[0].toUpperCase()+word.slice(1)).join(' ')]),
 ].map(([path,label])=>({value:path ? new URL(path,import.meta.url).href : 'default',label}));
-const ANIMATED_BACKGROUND = {value:new URL('./backgrounds/stockpot-animated.svg',import.meta.url).href,label:'Stockpot (Animated)'};
+const ANIMATED_BACKGROUND = {value:new URL('./stockpot-animated.svg',import.meta.url).href,label:'Stockpot (Animated)'};
 
 const STYLE = `
 :host{display:block;min-width:0;font-family:system-ui,sans-serif;color:white}

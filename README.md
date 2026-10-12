@@ -34,11 +34,11 @@ Report issues at https://github.com/tn9design/sidekick-display/issues. Include y
 
 ## Manual install
 
-Copy **all contents of `dist/`**, retaining the `backgrounds/` subdirectory, to `/config/www/sidekick-display/`. Add `/local/sidekick-display/sidekick-display.js` as a JavaScript module resource and reload your browser.
+Copy **all contents of `dist/`**, to `/config/www/sidekick-display/`. Add `/local/sidekick-display/sidekick-display.js` as a JavaScript module resource and reload your browser.
 
 ## Development
 
-Node.js is needed only for development. Run `npm test`, `npm run check`, and `npm run build`. Runtime files have no npm dependencies. This package preserves the reviewed build `v.0.5.101226.62`.
+Node.js is needed only for development. Run `npm test`, `npm run check`, and `npm run build`. Runtime files have no npm dependencies. The release build flattens background assets into dist because HACS downloads the top-level dashboard files. This package preserves the reviewed build `v.0.5.101226.62`.
 
 ## License
 

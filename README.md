@@ -30,6 +30,12 @@ Using Codex or Claude Code? Start with [the AI setup guide](docs/AI_SETUP.md), i
 
 Uploaded backgrounds use Home Assistant's image storage. Standard Home Assistant cards use their native editors; third-party child cards must already be installed on your instance. No household entity IDs, dashboard exports, credentials or kiosk configuration are shipped.
 
+## On-display quick settings
+
+While on Home, hold the Home icon for five seconds. Moving or releasing early cancels the hold. The hidden page offers Background Image and Navbar Style, Size, Side, and Auto Return Home, reusing the visual editor controls without Advanced settings. The quick style picker offers Light, Dark, Transparent and Glass; None remains in the full dashboard editor.
+
+Each selection saves immediately in this display browser and applies without a Save button. Tap Home to close, or let Auto Return Home expire. Never disables automatic closing. The settings remain after reloads and are scoped to the browser, dashboard view URL and optional `clock_display` parameter; other devices keep their own choices. Clearing browser site data clears these choices. The shared dashboard configuration stays unchanged. Image uploads still use HA's image library and its permissions.
+
 ## Testing and feedback
 
 This is a beta for early feedback, not a final release. The current editor was reviewed on the development Home Assistant instance; this HACS package still needs a clean installation test on another instance. Camera sizing, third-party card compatibility and kiosk/WebView behavior may differ between devices. The Notifications tab is a placeholder.
@@ -42,7 +48,7 @@ Copy **all contents of `dist/`**, to `/config/www/sidekick-display/`. Add `/loca
 
 ## Development
 
-Node.js is needed only for development. Run `npm test`, `npm run check`, and `npm run build`. Runtime files have no npm dependencies. The release build flattens background assets into dist because HACS downloads the top-level dashboard files. This package preserves the reviewed build `v.0.5.101226.713`.
+Node.js is needed only for development. Run `npm test`, `npm run check`, and `npm run build`. Runtime files have no npm dependencies. The release build flattens background assets into dist because HACS downloads the top-level dashboard files. This package preserves the reviewed build `v.0.5.101226.741`.
 
 ## License
 

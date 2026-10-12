@@ -1,9 +1,9 @@
 import {installCardReorder} from './card-reorder.js';
-import {openCardPicker} from './card-picker.js?v=v.0.5.101226.713';
-import {installStage4Effects} from './stage4-effects.js?v=v.0.5.101226.713';
-import {normalizeDisplay, resolveNight, formatClock, weatherReading, backgroundCandidates, FONTS} from './display-model.js?v=v.0.5.101226.713';
-import {normalizeAutomation, RequestGate} from './automation-model.js?v=v.0.5.101226.713';
-const BUILD_VERSION = 'v.0.5.101226.713';
+import {openCardPicker} from './card-picker.js?v=v.0.5.101226.741';
+import {installStage4Effects} from './stage4-effects.js?v=v.0.5.101226.741';
+import {normalizeDisplay, resolveNight, formatClock, weatherReading, backgroundCandidates, FONTS} from './display-model.js?v=v.0.5.101226.741';
+import {normalizeAutomation, RequestGate} from './automation-model.js?v=v.0.5.101226.741';
+const BUILD_VERSION = 'v.0.5.101226.741';
 const PREVIEW_BUILD = new URL(import.meta.url).pathname.includes('/sidekick-display-stage4/');
 const BACKGROUND = new URL('./stockpotomage.png', import.meta.url).href;
 const BACKGROUND_IMAGES = [
@@ -128,7 +128,15 @@ export class SidekickDisplay extends HTMLElement {
     this._stopReception();
     this._cancelTemporary();
     this._requestGate = new RequestGate();
-    this._config = normalized;
+    this._baseConfig = structuredClone(config);
+    this._localKey = `sidekick:quick-settings:v1:${window.location.pathname}:${new URL(window.location.href).searchParams.get('clock_display') ?? ''}`;
+    let overrides;
+    if (!editorDialog(this)) {
+      try { overrides = JSON.parse(localStorage.getItem(this._localKey) ?? 'null'); } catch {}
+    }
+    this._localOverrides = overrides ?? {};
+    try { this._config = normalizeConfig(this._withLocalSettings(this._localOverrides)); }
+    catch { this._localOverrides = {}; this._config = normalized; }
     clearTimeout(this._idleTimer);
     const previewPage=editorDialog(this)?.dataset.sidekickPage;
     this._page = previewPage && normalized.sidebar.buttons.some(b=>b.id===previewPage)?previewPage:'home';
@@ -139,6 +147,7 @@ export class SidekickDisplay extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    const quickEditor=this._quickPanel?.querySelector('sidekick-display-editor');if(quickEditor)quickEditor.hass=hass;
     this._syncReception();
     this._updateDisplay();
   }
@@ -164,6 +173,10 @@ export class SidekickDisplay extends HTMLElement {
     this._timer = setInterval(() => this._clock(), 1000);
   }
   disconnectedCallback() {
+    this._cancelHomeHold?.();
+    this._holdEvents?.abort();
+    this._quickPanel?.remove();
+    this._quickPanel = undefined;
     this._clearStage4Effects?.();
     this._stopReception();
     this._cancelTemporary();
@@ -186,6 +199,10 @@ export class SidekickDisplay extends HTMLElement {
   }
   _render() {
     if (!this._config) return;
+    this._cancelHomeHold?.();
+    this._holdEvents?.abort();
+    this._quickPanel?.remove();
+    this._quickPanel=undefined;
     this._clearStage4Effects?.();
     this._cancelTemporary();
     this._idleAnimation?.cancel();
@@ -222,6 +239,7 @@ export class SidekickDisplay extends HTMLElement {
         icon.setAttribute('icon', item.icon);
         button.append(icon);
         button.addEventListener('click',() => this._navigate(item.id));
+        if(item.id==='home')this._installHomeHold(button);
         nav.append(button);
       }
       if (sidebar.side === 'left') shell.prepend(nav); else shell.append(nav);
@@ -232,6 +250,65 @@ export class SidekickDisplay extends HTMLElement {
     if (this.isConnected && Number.isFinite(this._buttonSize)) installNavigation(this);
     installStage4Effects(this);
   }
+  _withLocalSettings(overrides) {
+    const config=structuredClone(this._baseConfig);
+    for(const [section,fields] of Object.entries({sidebar:['style','scale','side'],idle_return:['seconds'],background:['day','night']})) {
+      for(const field of fields)if(Object.hasOwn(overrides?.[section]??{},field)) (config[section]??={})[field]=overrides[section][field];
+    }
+    return config;
+  }
+  _installHomeHold(button) {
+    let start;
+    const cancel=()=>{clearTimeout(this._homeHoldTimer);start=undefined;};
+    this._cancelHomeHold=cancel;
+    button.addEventListener('pointerdown',event=>{
+      cancel();this._heldHome=false;
+      if(event.button!==0 || this._page!=='home' || this._quickPanel || this._temporary || editorDialog(this))return;
+      start={id:event.pointerId,x:event.clientX,y:event.clientY};
+      this._homeHoldTimer=setTimeout(()=>{start=undefined;this._heldHome=true;this._openQuickSettings();},5000);
+    });
+    const root=this.shadowRoot;
+    const signal=(this._holdEvents=new AbortController()).signal;
+    root.addEventListener('click',event=>{if(this._heldHome && event.detail!==0){this._heldHome=false;event.preventDefault();event.stopImmediatePropagation();}},{capture:true,signal});
+    // Root capture also observes events captured by the draggable navbar.
+    root.addEventListener('pointermove',event=>{if(start && event.pointerId===start.id && Math.hypot(event.clientX-start.x,event.clientY-start.y)>5)cancel();},{signal});
+    button.addEventListener('pointerup',cancel);button.addEventListener('pointercancel',cancel);
+    root.addEventListener('pointerup',()=>{cancel();if(this._heldHome)setTimeout(()=>{this._heldHome=false;},0);},{capture:true,signal});root.addEventListener('pointercancel',cancel,{capture:true,signal});root.addEventListener('lostpointercapture',cancel,{capture:true,signal});
+  }
+  _openQuickSettings() {
+    if(this._quickPanel || this._page!=='home' || this._temporary)return;
+    const panel=document.createElement('section');panel.className='page quick-settings';panel.setAttribute('aria-label','Quick settings');
+    panel.style.cssText='background:var(--card-background-color,#fff);color:var(--primary-text-color,#222)';
+    const editor=document.createElement('sidekick-display-editor');editor._quickSettings=true;editor._editorTab='settings';editor.setConfig(this._withLocalSettings(this._localOverrides));editor.hass=this._hass;
+    const status=document.createElement('p');status.setAttribute('role','status');
+    editor.addEventListener('config-changed',event=>{
+      event.stopPropagation();
+      if(event.detail.error){status.textContent=event.detail.error;return;}
+      const c=event.detail.config;
+      const overrides={sidebar:{style:c.sidebar?.style,scale:c.sidebar?.scale,side:c.sidebar?.side},idle_return:{seconds:c.idle_return?.seconds},background:{day:c.background?.day,night:c.background?.night}};
+      if(!this._saveQuickSettings(overrides)){status.textContent='Could not save settings. Check browser storage permissions.';return;}
+      status.textContent='';
+      // Keep the same settings editor while updating the real background/navbar.
+      const scroll=panel.scrollTop;
+      panel.remove();this._quickPanel=undefined;
+      this._render();
+      this.shadowRoot.querySelector('main').replaceChildren(panel);this._quickPanel=panel;panel.scrollTop=scroll;
+      this._resetIdle();
+    });
+    panel.append(editor,status);
+    this._closeQuickSettings=()=>{
+      this._quickPanel=undefined;this._closeQuickSettings=undefined;
+      this._clockKey=undefined;this._renderContent(++this._generation);this._updateDisplay();this._resetIdle();
+    };
+    this._quickPanel=panel;this.shadowRoot.querySelector('main').replaceChildren(panel);this._resetIdle();
+  }
+  _saveQuickSettings(overrides) {
+    try {
+      const config=normalizeConfig(this._withLocalSettings(overrides));
+      localStorage.setItem(this._localKey,JSON.stringify(overrides));
+      this._localOverrides=overrides;this._config=config;return true;
+    } catch {return false;}
+  }
   _resetIdle() {
     if(editorDialog(this)){clearTimeout(this._idleTimer);return;}
     if (this._temporary) return;
@@ -240,7 +317,7 @@ export class SidekickDisplay extends HTMLElement {
     const progress = this.shadowRoot.querySelector('.idle-progress');
     const track = this.shadowRoot.querySelector('.idle-track');
     if (track) track.hidden = true;
-    if (this.isConnected && !this._temporary && this._page !== 'home' && this._config.idle_return.seconds > 0) {
+    if (this.isConnected && !this._temporary && (this._page !== 'home' || this._quickPanel) && this._config.idle_return.seconds > 0) {
       const duration = this._config.idle_return.seconds * 1000;
       if (progress) {
         track.hidden = false;
@@ -258,6 +335,8 @@ export class SidekickDisplay extends HTMLElement {
     } else window.location.assign(url);
   }
   _navigate(page) {
+    this._cancelHomeHold?.();
+    if(this._quickPanel)this._closeQuickSettings?.();
     const target = this._config.sidebar.buttons.find(button => button.id === page);
     if (page !== 'home' && !target) return;
     if (target && target.destination !== 'internal') { this._leave(target.url,target.destination); return; }
@@ -376,6 +455,8 @@ export class SidekickDisplay extends HTMLElement {
     this._temporaryTimer = setTimeout(() => this._dismissTemporary(),duration);
   }
   _showTemporary(page) {
+    this._cancelHomeHold?.();
+    this._closeQuickSettings?.();
     this._settlePageTransition?.();
     if (this._temporary?.closing) this._cancelTemporary();
     if (this._temporary?.pages.some(entry => entry.page.id === page.id)) {
@@ -949,7 +1030,7 @@ export class SidekickDisplayEditor extends HTMLElement {
     const open=new Set([...this.shadowRoot.querySelectorAll('details[open]')].map(d=>d.querySelector('summary').textContent));
     this._forms=[];this._childErrors.clear();this.shadowRoot.replaceChildren();
     const style=document.createElement('style');style.textContent=':host{display:block;color:var(--primary-text-color);font:14px system-ui}details{border:1px solid var(--divider-color,#ccc);border-radius:12px;margin:12px 0;padding:14px}summary{cursor:pointer;font-weight:600;font-size:16px;min-height:28px}details.subsection{border:0;border-top:1px solid var(--divider-color,#ddd);border-radius:0;margin:8px 0 0;padding:8px 0 0}details.subsection>summary{font-size:14px;font-weight:500;min-height:24px;color:var(--secondary-text-color,#888);opacity:.75}p{line-height:1.5}ha-form{display:block}fieldset{min-width:0;border:1px solid var(--divider-color,#ccc);border-radius:8px;margin:12px 0;padding:12px}button{min-height:40px;padding:8px 12px;margin:6px 6px 0 0;cursor:pointer;border-radius:8px;border:1px solid var(--divider-color,#ccc);background:var(--card-background-color,#fff);color:var(--primary-text-color)}button:disabled{opacity:.3;cursor:default}.columns{display:grid;gap:12px}.columns.two{grid-template-columns:repeat(2,minmax(0,1fr))}.columns.three{grid-template-columns:repeat(3,minmax(0,1fr))}.columns>*{min-width:0}.upload-row{display:flex;align-items:end;gap:10px}.upload-row ha-form{flex:1;min-width:0}.upload-row button{flex-shrink:0;margin:0 0 8px}.upload-status{overflow-wrap:anywhere}.editor-tabs{display:flex;gap:4px;max-width:100%;justify-content:flex-start;position:relative;border-bottom:1px solid var(--divider-color,#ddd);padding-bottom:6px}.editor-tabs button{width:40px;height:40px;min-width:0;padding:8px;margin:0;border:0;border-radius:50%;flex:0 0 40px;position:relative;z-index:1;background:transparent}.editor-tabs button[aria-selected=true]{color:#fff;background:transparent;box-shadow:none}.tab-selection{position:absolute;left:0;top:0;width:40px;height:40px;border-radius:50%;background:var(--primary-color,#03a9f4);pointer-events:none}.editor-tabs ha-icon{--mdc-icon-size:24px}.card-section{margin-top:12px!important}.card-tools{display:flex;gap:4px;justify-content:flex-end}.card-tools button{min-height:32px;margin:0;padding:4px 9px}.settings-group{margin:16px 0}.settings-group h3{font-size:14px;font-weight:500;color:var(--secondary-text-color,#888);margin:16px 0 8px}.settings-group>.columns+.columns{margin-top:12px}.background-advanced{border:0;padding:0;margin:18px 0 0}.background-advanced>summary{font-size:14px;font-weight:500;color:var(--secondary-text-color,#888);min-height:32px}.background-advanced>.columns{margin-top:12px}.settings-subgroup+.settings-subgroup{margin-top:24px}.weather-fields{align-items:end}.settings-subgroup h4{font-size:14px;color:var(--secondary-text-color,#888);font-weight:500;margin:16px 0 8px}.page-editor{display:grid;gap:14px;margin-top:14px}.settings-group>ha-form+ha-form,.settings-group fieldset>ha-form+ha-form{margin-top:12px}.card-entry{position:relative;border:0;border-radius:12px;overflow:hidden;background:#f4f6f8}.card-entry details.card-section{border:0;margin:0!important;padding:0}.card-entry details.card-section>summary{box-sizing:border-box;padding:12px 92px 12px 16px;min-height:56px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:12px;list-style:none;color:var(--primary-text-color);opacity:1;background:transparent}.card-entry .card-tools{position:absolute;right:16px;top:12px;gap:8px}.card-entry .card-tools button{border:0;background:transparent;color:#333;font-size:20px;font-weight:600;padding:4px 8px}.card-entry summary::before{content:"›";font-size:24px;line-height:1;transition:transform .15s}.card-entry details[open]>summary::before{transform:rotate(90deg)}.card-entry summary::-webkit-details-marker{display:none}.card-entry details.card-section>hui-card-element-editor{display:block;padding:16px;--ha-color-form-background:#fff;--ha-color-form-background-hover:#f8f9fa}.card-entry details.card-section>button,.card-entry details.card-section>p{margin:12px}.card-entry details.card-section>button:last-child{display:block;margin:8px 16px 16px auto;font-size:14px;font-weight:400;color:var(--error-color,#b3261e);border:0;background:transparent}.card-entry summary:hover{background:rgba(0,0,0,.045)}.card-entry summary:focus-visible,.editor-tabs button:focus-visible{outline:2px solid var(--primary-color,#009ac7);outline-offset:-2px}.card-tools button:not(:disabled):hover{background:rgba(0,0,0,.08)}.card-entry button:not(:disabled):hover{background:rgba(0,0,0,.06)}.editor-tabs button:not([aria-selected=true]):hover{background:rgba(0,0,0,.06)}.add-card-button{justify-self:start;min-height:36px;height:36px;width:36px;margin:0;border:1px dashed var(--primary-color,#009ac7);border-radius:12px;background:transparent;color:#333;font-size:20px;font-weight:400;padding:0}.add-card-button:hover{background:rgba(0,154,199,.06)}.card-entry.drag-over{outline:2px dashed var(--primary-color,#009ac7);outline-offset:3px}.card-tools .card-drag-handle{cursor:grab;font-size:22px;font-weight:400}.card-tools .card-drag-handle:active{cursor:grabbing}';this.shadowRoot.append(style);
-    const tab=this._editorTabs();
+    const tab=this._quickSettings?'settings':this._editorTabs();
     this._status=document.createElement('p');this._status.setAttribute('role','status');this.shadowRoot.append(this._status);this._validate();
     const text=(name,label)=>({name,label,selector:{text:{}}});
     const number=(name,label,min,max)=>({name,label,selector:{number:{min,max,mode:'box'}}});
@@ -959,7 +1040,7 @@ export class SidekickDisplayEditor extends HTMLElement {
     const defaults=normalizeDisplay({});
     const background=this._section('Background');background.hidden=tab!=='settings';
     this._backgroundControls(background);
-    const advanced=document.createElement('details');advanced.className='background-advanced';const advancedTitle=document.createElement('summary');advancedTitle.textContent='Advanced settings';advanced.append(advancedTitle);background.append(advanced);
+    const advanced=document.createElement('details');advanced.className='background-advanced';advanced.hidden=!!this._quickSettings;const advancedTitle=document.createElement('summary');advancedTitle.textContent='Advanced settings';advanced.append(advancedTitle);background.append(advanced);
     const two=document.createElement('div');two.className='columns two';advanced.append(two);
     this._form(two,'background',[select('fit','Image Fit',[['fill','Fill'],['fit','Fit']])],defaults.background);
     this._form(two,'background',[text('color','Fallback CSS color')],defaults.background);
@@ -985,7 +1066,7 @@ export class SidekickDisplayEditor extends HTMLElement {
     const navbar=this._section('Navbar');navbar.hidden=tab!=='settings';
     const sidebar=this._rawConfig.sidebar??{};
     const navbarChoices=document.createElement('div');navbarChoices.className='columns two';navbar.append(navbarChoices);
-    this._selector(navbarChoices,'Navbar Style',sidebar.enabled!==true?'none':(sidebar.style==='standard'?'white':sidebar.style??'white'),[['white','Light (Default)'],['dark','Dark'],['glass','Transparent'],['refracting','Glass'],['none','None']],value=>this._change('sidebar',{...this._rawConfig.sidebar,...(value==='none'?{enabled:false}:{enabled:true,style:value})},true));
+    this._selector(navbarChoices,'Navbar Style',sidebar.enabled!==true?'none':(sidebar.style==='standard'?'white':sidebar.style??'white'),[['white','Light (Default)'],['dark','Dark'],['glass','Transparent'],['refracting','Glass'],...(!this._quickSettings?[['none','None']]:[])],value=>this._change('sidebar',{...this._rawConfig.sidebar,...(value==='none'?{enabled:false}:{enabled:true,style:value})},true));
     if(sidebar.enabled===true) {
       const scale=sidebar.scale??100;
       this._selector(navbarChoices,'Size',[75,100,125].includes(scale)?String(scale):'', [['100','Medium (Default)'],['75','Small'],['125','Large']],value=>this._change('sidebar',{...this._rawConfig.sidebar,scale:Number(value)},true));
@@ -998,7 +1079,7 @@ export class SidekickDisplayEditor extends HTMLElement {
       // Individual pages are edited through their icon tabs.
     }
     if(tab==='notifications'){const note=document.createElement('p');note.textContent='Coming soon';this.shadowRoot.append(note);}
-    if(tab.startsWith('page-'))this._pageEditor(Number(tab.slice(5)));else this._previewPage('home');
+    if(tab.startsWith('page-'))this._pageEditor(Number(tab.slice(5)));else if(!this._quickSettings)this._previewPage('home');
     for(const details of this.shadowRoot.querySelectorAll('details')) details.open=open.has(details.querySelector('summary').textContent);
   }
 }
@@ -1081,7 +1162,7 @@ const timedNavigate=card._navigate.bind(card);card._navigate=page=>{
     if(!drag||event.pointerId!==drag.id)return;
     const moved=drag.moved;drag=null;
     if(nav.hasPointerCapture(event.pointerId))nav.releasePointerCapture(event.pointerId);
-    if(!moved)return;suppressClick=true;
+    if(!moved){if(card._quickPanel && !card._heldHome)card._navigate('home');return;}suppressClick=true;
     const current=new DOMMatrixReadOnly(getComputedStyle(selection).transform).m42;
     const index=cancelled?buttons.findIndex(button=>button.dataset.page===card._page):Math.round(current/step),page=buttons[index].dataset.page;
     if(page!==card._page || card._temporary)card._navigate(page);

@@ -21,12 +21,12 @@ Give Codex, Claude Code or another assistant this guide and tell it which Home A
 4. Verify a **JavaScript module** resource beginning `/hacsfiles/sidekick-display/sidekick-display.js` exists under Settings → Dashboards → Resources. Keep HACS's version query when present. HACS normally manages it for storage-mode dashboards; YAML-mode dashboards need manual registration. Avoid duplicate entries.
 5. Create or use the agreed test **Panel (one card)** view and add **Sidekick Display** from the card picker.
 
-The picker initializes four enabled numbered navigation pages. Each contains the same Tile using the first light in the local instance, or a setup message if no light is available. Confirm or change that selection rather than assuming the first light is the intended one.
+The picker initializes four enabled navigation pages with grid, camera, moon and globe icons. Each contains the same Tile using the first light in the local instance, or a setup message if no light is available. Confirm or change that selection rather than assuming the first light is the intended one.
 
 ## Configure
 
 - **Home tab:** choose the weather entity, clock settings and date visibility. If no weather entity exists, set Show Weather to Off.
-- **Numbered tabs:** choose each page's name/icon and whether it appears in the navbar. Expand its starter card and choose the intended light. Use the dashed plus to add cards; the handle reorders them; Remove is inside the expanded card.
+- **Navigation tabs:** choose each page's name/icon and whether it appears in the navbar. Expand its starter card and choose the intended light. Use the dashed plus to add cards; the handle reorders them; Remove is inside the expanded card.
 - **Settings tab:** choose background and navigation style, size, side and idle return. Background Advanced settings starts collapsed. Uploaded images are stored through Home Assistant's image storage.
 - **Notifications tab:** says Coming soon. Skip notification/blueprint setup in this early release.
 - Click **Save** in the card editor. Preview changes are drafts until saved. Complete any additional dashboard save/Done action required by the UI.

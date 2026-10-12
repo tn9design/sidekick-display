@@ -15,7 +15,7 @@ This repository is available as a **custom repository only**. It has not been su
 
 HACS installs the files and normally registers the JavaScript resource for storage-mode dashboards. It does not create a dashboard, install a kiosk app, or configure your devices. If the card does not appear, check Settings → Dashboards → Resources for `/hacsfiles/sidekick-display/sidekick-display.js` with type **JavaScript module**. YAML dashboards require manual resource registration.
 
-New cards use four enabled numbered pages with the same Tile card, selecting the first light from your own Home Assistant instance. If no light exists, they show a setup message. Existing configurations are never reset simply by opening the editor.
+New cards use four enabled pages with grid, camera, moon and globe icons with the same Tile card, selecting the first light from your own Home Assistant instance. If no light exists, they show a setup message. Existing configurations are never reset simply by opening the editor.
 
 ## AI-assisted setup
 
@@ -24,7 +24,7 @@ Using Codex or Claude Code? Start with [the AI setup guide](docs/AI_SETUP.md), i
 ## Settings
 
 - **Home:** clock format/font/color/size, date visibility and weather.
-- **Numbered pages:** navigation icon/name, visibility and embedded cards. Drag the handle to reorder cards; keyboard arrow keys also work. Remove is inside the expanded editor. The dashed plus adds a card.
+- **Navigation pages:** navigation icon/name, visibility and embedded cards. Drag the handle to reorder cards; keyboard arrow keys also work. Remove is inside the expanded editor. The dashed plus adds a card.
 - **Notifications:** Coming soon. A blueprint-based setup is being considered.
 - **Settings:** background, collapsed background advanced controls, navigation style/size/side and idle return.
 
@@ -42,7 +42,7 @@ Copy **all contents of `dist/`**, to `/config/www/sidekick-display/`. Add `/loca
 
 ## Development
 
-Node.js is needed only for development. Run `npm test`, `npm run check`, and `npm run build`. Runtime files have no npm dependencies. The release build flattens background assets into dist because HACS downloads the top-level dashboard files. This package preserves the reviewed build `v.0.5.101226.62`.
+Node.js is needed only for development. Run `npm test`, `npm run check`, and `npm run build`. Runtime files have no npm dependencies. The release build flattens background assets into dist because HACS downloads the top-level dashboard files. This package preserves the reviewed build `v.0.5.101226.713`.
 
 ## License
 

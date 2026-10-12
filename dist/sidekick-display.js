@@ -1,9 +1,9 @@
 import {installCardReorder} from './card-reorder.js';
-import {openCardPicker} from './card-picker.js?v=v.0.5.101226.69';
-import {installStage4Effects} from './stage4-effects.js?v=v.0.5.101226.69';
-import {normalizeDisplay, resolveNight, formatClock, weatherReading, backgroundCandidates, FONTS} from './display-model.js?v=v.0.5.101226.69';
-import {normalizeAutomation, RequestGate} from './automation-model.js?v=v.0.5.101226.69';
-const BUILD_VERSION = 'v.0.5.101226.69';
+import {openCardPicker} from './card-picker.js?v=v.0.5.101226.713';
+import {installStage4Effects} from './stage4-effects.js?v=v.0.5.101226.713';
+import {normalizeDisplay, resolveNight, formatClock, weatherReading, backgroundCandidates, FONTS} from './display-model.js?v=v.0.5.101226.713';
+import {normalizeAutomation, RequestGate} from './automation-model.js?v=v.0.5.101226.713';
+const BUILD_VERSION = 'v.0.5.101226.713';
 const PREVIEW_BUILD = new URL(import.meta.url).pathname.includes('/sidekick-display-stage4/');
 const BACKGROUND = new URL('./stockpotomage.png', import.meta.url).href;
 const BACKGROUND_IMAGES = [
@@ -146,7 +146,7 @@ export class SidekickDisplay extends HTMLElement {
   static getStubConfig(hass) {
     const weather=Object.keys(hass?.states??{}).find(id=>id.startsWith('weather.'));
     const light=Object.keys(hass?.states??{}).find(id=>id.startsWith('light.'));
-    return {type:'custom:sidekick-display',weather:weather?{entity:weather}:{},sidebar:{enabled:true,style:'white',buttons:[1,2,3,4].map(n=>({id:`page-${n}`,name:`Page ${n}`,icon:`mdi:numeric-${n}-box`,enabled:true,destination:'internal',card:{type:'vertical-stack',cards:[light?{type:'tile',entity:light}:{type:'markdown',content:'Choose a light entity to set up this page.'}]}}))}};
+    return {type:'custom:sidekick-display',weather:weather?{entity:weather}:{},sidebar:{enabled:true,style:'white',buttons:[1,2,3,4].map(n=>({id:`page-${n}`,name:`Page ${n}`,icon:['mdi:view-grid','mdi:camera','mdi:weather-night','mdi:web'][n-1],enabled:true,destination:'internal',card:{type:'vertical-stack',cards:[light?{type:'tile',entity:light}:{type:'markdown',content:'Choose a light entity to set up this page.'}]}}))}};
   }
   static getConfigElement() { return document.createElement('sidekick-display-editor'); }
   connectedCallback() {
@@ -900,7 +900,7 @@ export class SidekickDisplayEditor extends HTMLElement {
       const current=path.split('.').reduce((v,k)=>v?.[k],this._rawConfig)??[];
       let n=1;while(current.some(p=>p.id===`page-${n}`))n++;
       const item={id:`page-${n}`,name:`Page ${n}`,card:{type:'markdown',content:'New page'}};
-      if(notification)item.seconds=30;else{item.icon=`mdi:numeric-${current.length+1}-box`;item.destination='internal';}
+      if(notification)item.seconds=30;else{item.icon=['mdi:view-grid','mdi:camera','mdi:weather-night','mdi:web'][current.length];item.destination='internal';}
       this._change(path,[...current,item],true);
     },!notification&&items.length>=4);
   }
@@ -912,7 +912,7 @@ export class SidekickDisplayEditor extends HTMLElement {
     const items=this._rawConfig.sidebar?.buttons??[];
     const item=items[index];
     const parent=document.createElement('div');parent.className='page-editor';this.shadowRoot.append(parent);
-    if(!item){this._button(parent,'Create page',()=>{const copy=structuredClone(items);let n=1;while(copy.some(p=>p.id===`page-${n}`))n++;this._editorTab=`page-${copy.length}`;copy.push({id:`page-${n}`,name:`Page ${index+1}`,icon:`mdi:numeric-${copy.length+1}-box`,enabled:true,destination:'internal',card:{type:'vertical-stack',cards:[]}});this._change('sidebar.buttons',copy,true);});this._previewPage('home');return;}
+    if(!item){this._button(parent,'Create page',()=>{const copy=structuredClone(items);let n=1;while(copy.some(p=>p.id===`page-${n}`))n++;this._editorTab=`page-${copy.length}`;copy.push({id:`page-${n}`,name:`Page ${index+1}`,icon:['mdi:view-grid','mdi:camera','mdi:weather-night','mdi:web'][copy.length],enabled:true,destination:'internal',card:{type:'vertical-stack',cards:[]}});this._change('sidebar.buttons',copy,true);});this._previewPage('home');return;}
     const row=document.createElement('div');row.className='columns two';parent.append(row);
     this._selector(row,'Show in navbar',item.enabled===false?'off':'on',[['on','On (Default)'],['off','Off']],value=>this._change(`sidebar.buttons.${index}.enabled`,value==='on',true));
     const iconForm=this._form(row,`sidebar.buttons.${index}`,[{name:'icon',label:'Icon',selector:{icon:{}}}],{});
@@ -937,7 +937,7 @@ export class SidekickDisplayEditor extends HTMLElement {
   _editorTabs() {
     const selected=this._editorTab??'home';
     const tabs=document.createElement('div');tabs.className='editor-tabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Sidekick settings');this.shadowRoot.append(tabs);
-    const choices=[['home','mdi:home','Home'],...[0,1,2,3].map(i=>[`page-${i}`,this._rawConfig.sidebar?.buttons?.[i]?.icon??`mdi:numeric-${i+1}-box`,this._rawConfig.sidebar?.buttons?.[i]?.name??`Page ${i+1}`]),['notifications','mdi:bell-outline','Notifications'],['settings','mdi:cog','Shared settings']];
+    const choices=[['home','mdi:home','Home'],...[0,1,2,3].map(i=>[`page-${i}`,this._rawConfig.sidebar?.buttons?.[i]?.icon??['mdi:view-grid','mdi:camera','mdi:weather-night','mdi:web'][i],this._rawConfig.sidebar?.buttons?.[i]?.name??`Page ${i+1}`]),['notifications','mdi:bell-outline','Notifications'],['settings','mdi:cog','Shared settings']];
     const indicator=document.createElement('span');indicator.className='tab-selection';indicator.setAttribute('aria-hidden','true');tabs.append(indicator);
     const position=Math.max(0,choices.findIndex(c=>c[0]===selected))*44;indicator.style.transform=`translateX(${position}px)`;
     if(this._tabAnimationFrom!==undefined && !window.matchMedia('(prefers-reduced-motion: reduce)').matches)indicator.animate([{transform:`translateX(${this._tabAnimationFrom}px)`},{transform:`translateX(${position}px)`}],{duration:220,easing:'ease-out'});this._tabAnimationFrom=undefined;

@@ -17,6 +17,10 @@ HACS installs the files and normally registers the JavaScript resource for stora
 
 New cards use four enabled numbered pages with the same Tile card, selecting the first light from your own Home Assistant instance. If no light exists, they show a setup message. Existing configurations are never reset simply by opening the editor.
 
+## AI-assisted setup
+
+Using Codex or Claude Code? Start with [the AI setup guide](docs/AI_SETUP.md), including a copyable request and a verification checklist. [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) provide repository instructions. No dedicated skill or MCP installation is needed.
+
 ## Settings
 
 - **Home:** clock format/font/color/size, date visibility and weather.
